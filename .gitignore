@@ -2,3 +2,9 @@
 *.pt
 *.pth
 *.safetensors
+*.txt
+*.json
+
+__pycache__/
+data/
+.github/
