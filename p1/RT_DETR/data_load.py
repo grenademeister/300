@@ -38,6 +38,7 @@ def loading_data(label_path  , jpg_path):
             label = region['region_attributes']['chi_id']
             bbox = (attrs['x'], attrs['y'], attrs['width'], attrs['height'])
             bboxes.append(bbox)
+            print(bbox)
             labels.append(0)
         combined_data["bboxes"].append(bboxes)
         combined_data['category'].append(labels)
@@ -128,6 +129,12 @@ class RTDataset(Dataset):
                     boxes[obj_index] = transformed["bboxes"]
                     categories[obj_index] = transformed["category"]
                     formatted_annotations.append(self.format_image_annotations_as_coco(image_id[obj_index], categories[obj_index], boxes[obj_index]))
+        else:
+            if type(idx) == type(1):
+                formatted_annotations.append(self.format_image_annotations_as_coco(image_id,categories,boxes))
+            else:
+                for obj_index in range(len(image)):
+                    formatted_annotations.append(self.format_image_annotations_as_coco(image_id[obj_index],categories[obj_index],boxes[obj_index]))
 
         # Format annotations in COCO format for image_processor
         

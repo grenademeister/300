@@ -2,21 +2,21 @@ import numpy as np
 from PIL import ImageDraw, Image
 # Draw sample
 
-def Draw_img_bbox(data):
+def Draw_img_bbox(image,result):
 
-    image_with_boxes = data['image'].copy()
+    for score, label, box in zip(result["scores"], result["labels"], result["boxes"]):
+        box = [round(i, 2) for i in box.tolist()]
+
+    image_with_boxes = image.copy()
     draw = ImageDraw.Draw(image_with_boxes)
 
-    for i in range(len(data['category'])):
-        box = data["bboxes"][i]
-        label = str(data["category"][i])
-        x, y, w, h = map(int, box)
+    for score, label, box in zip(result["scores"], result["labels"], result["boxes"]):
+        box = [round(i, 2) for i in box.tolist()]
+        x, y, x2, y2 = tuple(box)
+        draw.rectangle((x, y, x2, y2), outline="red", width=1)
 
-        draw.rectangle(
-            (x, y, x + w, y + h),
-            outline="red",
-            width=2
-        )
+        draw.text((x, y), f" [ {score.item():.2f} ]", fill="blue")
+
     return image_with_boxes
 
 def Draw_histogram(path):

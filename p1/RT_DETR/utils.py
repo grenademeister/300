@@ -143,3 +143,58 @@ class MAPEvaluator:
         
         return metrics
 
+
+import torch
+import numpy as np
+import albumentations as A
+
+
+
+class TTA:
+    def __init__(self):
+        """
+        클래스 내부에서 적용할 증강(augmentation) 방식들을 직접 정의합니다.
+        """
+        # 적용할 증강의 종류를 딕셔너리로 정의
+        self.augmentations = {
+            'flip': A.HorizontalFlip(p=1),
+            'intensity': A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=1),
+            'gaussian_noise': A.GaussNoise(p=1)
+        }
+
+        # 각 증강을 A.Compose로 감싸서 개별 파이프라인으로 만듭니다.
+        self.transforms = {name: A.Compose([aug]) for name, aug in self.augmentations.items()}
+
+    def __call__(self, batch_tensor: torch.Tensor) -> dict:
+        """
+        데이터로더에서 나온 배치 텐서에 TTA를 적용하고 딕셔너리를 반환합니다.
+
+        Args:
+            batch_tensor (torch.Tensor): (B, C, H, W) 형태의 이미지 텐서.
+
+        Returns:
+            dict: {'original': 원본 텐서, 'aug_name1': 증강 텐서 1, ...} 형태의 딕셔너리.
+        """
+        # 원본 텐서를 'original' 키와 함께 결과 딕셔너리에 추가합니다.
+        results = {'original': batch_tensor}
+        device = batch_tensor.device
+
+        # PyTorch 텐서(B, C, H, W)를 NumPy 배열(B, H, W, C)로 변환합니다.
+        batch_numpy = batch_tensor.permute(0, 2, 3, 1).cpu().numpy()
+
+        # __init__에서 정의된 각 증강을 이름(aug_name)과 함께 순회합니다.
+        for aug_name, transform in self.transforms.items():
+
+            # 배치 내의 각 이미지에 개별적으로 증강을 적용합니다.
+            augmented_batch_list = [transform(image=img)['image'] for img in batch_numpy]
+
+            # 증강된 이미지들을 다시 하나의 NumPy 배열로 합칩니다.
+            augmented_batch_numpy = np.array(augmented_batch_list)
+
+            # NumPy 배열을 다시 PyTorch 텐서로 변환하고 원본 장치로 보냅니다.
+            augmented_tensor = torch.from_numpy(augmented_batch_numpy).permute(0, 3, 1, 2).to(device)
+
+            # 증강 이름(key)과 증강된 텐서(value)를 딕셔ner셔너리에 추가합니다.
+            results[aug_name] = augmented_tensor
+
+        return results
