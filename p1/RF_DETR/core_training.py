@@ -19,15 +19,15 @@ def train_rfdetr(
 
     # Import and initialize model
     if model_type.lower() == "large":
-        from rfdetr import RFDETRLarge
+        from rfdetr.detr import RFDETRLarge
 
         model = RFDETRLarge()
     elif model_type.lower() == "base":
-        from rfdetr import RFDETRBase
+        from rfdetr.detr import RFDETRBase
 
         model = RFDETRBase()
     elif model_type.lower() == "small":
-        from rfdetr import RFDETRSmall
+        from rfdetr.detr import RFDETRSmall
 
         model = RFDETRSmall()
     else:

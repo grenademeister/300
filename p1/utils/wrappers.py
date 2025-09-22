@@ -70,3 +70,15 @@ class YOLOWrapper(ModelWrapper):
     def validate(self):
         # Implement validation logic if necessary
         pass
+
+
+class RFWrapper(ModelWrapper):
+    def __init__(self, method="nms", use_tta=True):
+        super().__init__(method, use_tta)
+
+    def load_model(self, model_path="checkpoint_best_ema.pth"):
+        from rfdetr.detr import RFDETRLarge
+        import torch.nn as nn
+
+        model = RFDETRLarge(pretrain_weights=model_path)
+        return model
