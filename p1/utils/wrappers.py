@@ -1,4 +1,5 @@
 import torch
+from torch import Tensor
 import rfdetr
 from supervision import Detections
 
@@ -7,30 +8,40 @@ from p1.utils.augmentation import tta
 
 
 class ModelWrapper:
-    def __init__(self, method="nms", use_tta=True):
-        assert method in ["nms", "soft-nms", "wbf"], "Invalid method"
-        if method == "nms":
-            self.ensemble_method = nms
-        elif method == "soft-nms":
-            self.ensemble_method = soft_nms
-        else:
-            self.ensemble_method = wbf
+    """
+    Base class for model wrappers.
+    Args:
+        method (str): Ensemble method, one of ['nms', 'soft-nms', 'wbf']
+        use_tta (bool): Whether to use test-time augmentation
+    """
+
+    def __init__(self, method: str = "nms", use_tta: bool = True):
+        assert method in [
+            "nms",
+            "soft-nms",
+            "wbf",
+        ], "Invalid ensemble method."
+        self.ensemble_method = {"nms": nms, "soft-nms": soft_nms, "wbf": wbf}[method]
         self.use_tta = use_tta
 
-    def preprocess(self, images, labels):
+    def preprocess(
+        self, images: list[str], labels: list[str]
+    ) -> tuple[list[str], list[str]]:
         # Implement any preprocessing steps if necessary
         return images, labels
 
     def load_model(self):
         raise NotImplementedError
 
-    def predict(self, images):
+    def predict(self, images: list[str]) -> list[tuple[Tensor, Tensor]]:
+        """Run full prediction pipeline: preprocess, inference, ensemble"""
         raise NotImplementedError
 
     def validate(self):
         raise NotImplementedError
 
-    def inference(self, images):
+    def inference(self, images: list[str]) -> tuple[Tensor, Tensor]:
+        """Run only model inference"""
         raise NotImplementedError
 
 
@@ -45,6 +56,14 @@ class YOLOWrapper(ModelWrapper):
         return YOLO(model_path)
 
     def inference(self, images):
+        """
+        Run model inference.
+        Args:
+            images (list of str): List of image file paths, processed in batch
+        Returns:
+            results (torch.Tensor): Detected boxes, shape (batch, tta, num_boxes, 4)
+            scores (torch.Tensor): Confidence scores, shape (batch, tta, num_boxes)
+        """
         if self.use_tta:
             images_input = tta(images)
         else:
@@ -91,6 +110,14 @@ class RFWrapper(ModelWrapper):
         return model
 
     def inference(self, images):
+        """
+        Run model inference.
+        Args:
+            images (list of str): List of image file paths, processed in batch
+        Returns:
+            results (torch.Tensor): Detected boxes, shape (batch, tta, num_boxes, 4)
+            scores (torch.Tensor): Confidence scores, shape (batch, tta, num_boxes)
+        """
         if self.use_tta:
             images_input = tta(images)
         else:
@@ -99,15 +126,17 @@ class RFWrapper(ModelWrapper):
         results = []
         scores = []
         for image_batch in images_input:
-            results_batch = self.model.predict(image_batch)
+            results_batch = self.model.predict(image_batch)  # type: ignore
             temp_res, temp_scores = [], []
             if isinstance(results_batch, Detections):
                 results_batch = [results_batch]  # << sick hack lol
+
             for detection in results_batch:
                 temp_res.append(torch.from_numpy(detection.xyxy))  # (num_boxes, 4)
                 temp_scores.append(torch.Tensor(detection.confidence))  # (num_boxes,)
             results.append(torch.stack(temp_res, dim=0))
             scores.append(torch.stack(temp_scores, dim=0))
+
         # make results a tensor
         results = torch.stack(results, dim=0).permute(1, 0, 2, 3)
         scores = torch.stack(scores, dim=0).permute(1, 0, 2)
@@ -122,7 +151,23 @@ class RFWrapper(ModelWrapper):
 
 
 class EnsembleWrapper(ModelWrapper):
-    def __init__(self, model_wrappers, method="nms", use_tta=True):
+    """
+    Ensemble multiple model wrappers.
+    """
+
+    def __init__(
+        self,
+        model_wrappers: list[ModelWrapper],
+        method: str = "nms",
+        use_tta: bool = True,
+    ):
+        """
+        Initialize the ensemble wrapper with multiple model wrappers.
+        Args:
+            model_wrappers (list of ModelWrapper): List of model wrapper instances to ensemble!
+            method (str): Ensemble method, one of ['nms', 'soft-nms', 'wbf']
+            use_tta (bool): Whether to use test-time augmentation
+        """
         super().__init__(method, use_tta)
         self.load_model(model_wrappers)
 
@@ -130,6 +175,9 @@ class EnsembleWrapper(ModelWrapper):
         self.models: list[ModelWrapper] = model_wrappers
 
     def predict(self, images):
+        """
+        Stack predictions from multiple models and ensemble them.
+        """
         results, scores = [], []
         for model in self.models:
             result, score = model.inference(images)
