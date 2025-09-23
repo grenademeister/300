@@ -2,9 +2,10 @@ import torch
 from torch import Tensor
 import rfdetr
 from supervision import Detections
+from ultralytics import YOLO
 
 from p1.utils.ensemble_boxes import nms, soft_nms, wbf
-from p1.utils.augmentation import tta
+from p1.utils.augmentation import tta, reverse_tta
 
 
 class ModelWrapper:
@@ -51,8 +52,6 @@ class YOLOWrapper(ModelWrapper):
         self.model = self.load_model()
 
     def load_model(self, model_path="yolo_best.pt"):
-        from ultralytics import YOLO
-
         return YOLO(model_path)
 
     def inference(self, images):
@@ -71,19 +70,24 @@ class YOLOWrapper(ModelWrapper):
         # results is a list of input images in this point!
         results = []
         scores = []
-        for image_batch in images_input:
+        for i, image_batch in enumerate(images_input):
             results_batch = self.model.predict(image_batch)
             temp_res, temp_scores = [], []
             for res in results_batch:
                 temp_res.append(res.boxes.xyxy)
                 temp_scores.append(res.boxes.conf)
-            results.append(torch.stack(temp_res, dim=0))
-            scores.append(torch.stack(temp_scores, dim=0))
+            temp_res = torch.stack(temp_res, dim=0)  # (batch, num_boxes, 4)
+            temp_scores = torch.stack(temp_scores, dim=0)  # (batch, num_boxes)
+            temp_res, temp_scores = reverse_tta(temp_res, temp_scores, i)
+            results.append(temp_res)
+            scores.append(temp_scores)
         # make results a tensor
-        results = torch.stack(results, dim=0).permute(1, 0, 2, 3)
-        scores = torch.stack(scores, dim=0).permute(1, 0, 2)
-        # results: (batch, tta, num_boxes, 4)
-        # scores: (batch, tta, num_boxes)
+        results = torch.cat(results, dim=1)
+        scores = torch.cat(scores, dim=1)
+        # results: (batch, num_boxes, 4)
+        # scores: (batch, num_boxes)
+        print("YOLO results shape:", results.shape)
+        print("YOLO scores shape:", scores.shape)
         return results, scores
 
     def predict(self, images):
@@ -109,6 +113,12 @@ class RFWrapper(ModelWrapper):
         # model.optimize_for_inference()
         return model
 
+    def preprocess(self, images_input: list[Tensor]) -> list[list[Tensor]]:
+        images = []
+        for image_batch in images_input:
+            images.append(list(torch.unbind(image_batch, dim=0)))
+        return images
+
     def inference(self, images):
         """
         Run model inference.
@@ -121,11 +131,12 @@ class RFWrapper(ModelWrapper):
         if self.use_tta:
             images_input = tta(images)
         else:
-            images_input = [images]
+            images_input = tta(images)[0:1]  # keep original only
+        images_input = self.preprocess(images_input)
         # results is a list of input images in this point!
         results = []
         scores = []
-        for image_batch in images_input:
+        for i, image_batch in enumerate(images_input):
             results_batch = self.model.predict(image_batch)  # type: ignore
             temp_res, temp_scores = [], []
             if isinstance(results_batch, Detections):
@@ -134,12 +145,15 @@ class RFWrapper(ModelWrapper):
             for detection in results_batch:
                 temp_res.append(torch.from_numpy(detection.xyxy))  # (num_boxes, 4)
                 temp_scores.append(torch.Tensor(detection.confidence))  # (num_boxes,)
-            results.append(torch.stack(temp_res, dim=0))
-            scores.append(torch.stack(temp_scores, dim=0))
+            temp_res = torch.stack(temp_res, dim=0)  # (batch, num_boxes, 4)
+            temp_scores = torch.stack(temp_scores, dim=0)  # (batch, num_boxes)
+            temp_res, temp_scores = reverse_tta(temp_res, temp_scores, i)
+            results.append(temp_res)
+            scores.append(temp_scores)
 
         # make results a tensor
-        results = torch.stack(results, dim=0).permute(1, 0, 2, 3)
-        scores = torch.stack(scores, dim=0).permute(1, 0, 2)
+        results = torch.cat(results, dim=1)
+        scores = torch.cat(scores, dim=1)
         # results: (batch, tta, num_boxes, 4)
         # scores: (batch, tta, num_boxes)
         return results, scores
@@ -183,7 +197,7 @@ class EnsembleWrapper(ModelWrapper):
             result, score = model.inference(images)
             results.append(result)
             scores.append(score)
-        # (num_models, batch, tta, num_boxes, 4), (num_models, batch, tta, num_boxes)
+        # (num_models, batch, num_boxes, 4), (num_models, batch, num_boxes)
         results = torch.cat(results, dim=1)
         scores = torch.cat(scores, dim=1)
         # (batch, num_models*tta, num_boxes, 4), (batch, num_models*tta, num_boxes)
