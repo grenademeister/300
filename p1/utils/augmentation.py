@@ -39,29 +39,27 @@ def tta(images: list[str]) -> list[Tensor]:
     ]
 
 
-def reverse_tta(
-    boxes: Tensor, scores: Tensor, imgsz: tuple[int, int]
-) -> tuple[Tensor, Tensor]:
+def reverse_tta(boxes: Tensor, scores: Tensor, tta_idx: int) -> tuple[Tensor, Tensor]:
     """
     Correct boxes position after TTA
     Args:
-        boxes(torch.Tensor): Detected boxes, shape (batch, tta, num_boxes, 4) , required format is (xmin ymin xmax ymax)
-        scores(torch.Tensor): Confidence scores, shape (batch, tta, num_boxes)
-        imgsz (tuple[int, int]): Original image size (height, width)
+        boxes(torch.Tensor): Detected boxes, shape (batch, num_boxes, 4)
+        scores(torch.Tensor): Confidence scores, shape (batch, num_boxes)
+        tta_idx(int): Index of TTA applied
     """
-    h, w = imgsz
+    h, w = 512, 512
 
-    # TTA order: [original, h_flip, v_flip, hv_flip]
     boxes_corrected = boxes.clone()
 
-    # H flip: x coordinates need correction
-    boxes_corrected[:, 1, :, [0, 2]] = w - boxes[:, 1, :, [2, 0]]
-
-    # V flip: y coordinates need correction
-    boxes_corrected[:, 2, :, [1, 3]] = h - boxes[:, 2, :, [3, 1]]
-
-    # HV flip: both x and y coordinates need correction
-    boxes_corrected[:, 3, :, [0, 2]] = w - boxes[:, 3, :, [2, 0]]
-    boxes_corrected[:, 3, :, [1, 3]] = h - boxes[:, 3, :, [3, 1]]
+    if tta_idx == 1:
+        # H flip: x coordinates need correction
+        boxes_corrected[:, :, [0, 2]] = w - boxes[:, :, [2, 0]]
+    elif tta_idx == 2:
+        # V flip: y coordinates need correction
+        boxes_corrected[:, :, [1, 3]] = h - boxes[:, :, [3, 1]]
+    elif tta_idx == 3:
+        # HV flip: both x and y coordinates need correction
+        boxes_corrected[:, :, [0, 2]] = w - boxes[:, :, [2, 0]]
+        boxes_corrected[:, :, [1, 3]] = h - boxes[:, :, [3, 1]]
 
     return boxes_corrected, scores

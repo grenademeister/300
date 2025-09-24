@@ -40,14 +40,11 @@ class RTWrapper(ModelWrapper):
         inputs = []
         self.use_tta = True
         if self.use_tta:
-            print('use tta')
             inputs = tta(images= images)
-          
           #  print('after tta shpae' , len(inputs) , inputs[0].shape) ## 4 size [batch,3,512,512]  
             for i in range(len(inputs)):
                 inputs[i] = self.image_processor(inputs[i], return_tensors="pt" , do_rescale = False)['pixel_values']
         else:
-            print('no tta')
             for image in images:
                 inputs.append(Image.open(image))
             
@@ -58,14 +55,23 @@ class RTWrapper(ModelWrapper):
         outputs = []
         for input in inputs:
             with torch.no_grad():
-                outputs.append(self.model(input))  # model output: xmin ymin xmax ymax
+                outputs.append(self.model(input))  # model output: xmin ymin xmax ymax / tta-list ( batch-list ( ~))
 
         results = []
         for output in outputs:
             results.append(self.image_processor.post_process_object_detection(output, threshold=0.25, target_sizes=target_size))
         
-        bboxes , scores = self.result_process(results)
-        final_bboxes , final_scores = reverse_tta(bboxes , scores , (512,512))
+        bboxes , scores = self.result_process(results) # [ (batch,num_bbox,4)] format
+        print(scores)
+        final_bboxes , final_scores = [],[]
+        for i in range(len(bboxes)):
+            temp_b , temp_s = reverse_tta(bboxes[i],scores[i],i)
+            final_bboxes.append(temp_b)
+            final_scores.append(temp_s)
+        final_scores = torch.cat(final_scores , dim=1).squeeze(dim =2)
+        final_bboxes = torch.cat(final_bboxes,dim=1)
+        print('final bbox shape:',final_bboxes.shape)
+        print('final score shape:',final_scores.shape)
         return final_bboxes , final_scores
     def predict(self,images):
         bboxes , scores = self.inference(images)
@@ -73,18 +79,20 @@ class RTWrapper(ModelWrapper):
         print(bboxes)
         final = self.ensemble_method(bboxes , scores)
         print('after ensemble:')
-        print(final[0])
+        print(final)
         return final
     def result_process(self,r):
+        """
+        arg: list ( list ('boxes': tensor(_,4) ,'score': tensor(_,1)))
+        return: list-tta ( tensor ( batch ,num , 4)) , list-tta(tensor(batch,num,1))
+        """
         ##flatten
         flat_b = []
         flat_s = []
         tta_num = len(r)
         batch_num = len(r[0])
         max_bbox_num = 0
-        # for i in range(4):
-        #     print(i,'----------')
-        #     print(r[i][0]['boxes'])
+   
         for tta in r:
             for batch in tta:
                 b = batch['boxes']
@@ -104,8 +112,10 @@ class RTWrapper(ModelWrapper):
         ]
      
         #reshape
-        results_b = torch.stack(padded_b).view(tta_num,batch_num , max_bbox_num , 4 ).permute(1,0,2,3)
-        results_s = torch.stack(padded_s).view(tta_num,batch_num , max_bbox_num , 1).permute(1,0,2,3)
+        results_b = torch.stack(padded_b).view(tta_num,batch_num , max_bbox_num , 4 )
+        results_b = [b for b in results_b]
+        results_s = torch.stack(padded_s).view(tta_num,batch_num , max_bbox_num , 1)
+        results_s = [s for s in results_s]
         return results_b,results_s
     def validate(self):
         n=2
