@@ -8,3 +8,5 @@
 __pycache__/
 data/
 .github/
+env_300/
+checkpoint-9744/
