@@ -4,21 +4,17 @@ from p1.utils.metric import box_iou
 
 
 def nms(boxes, scores, iou_threshold=0.5):
-    batch_size, tta_size, num_boxes, _ = boxes.shape
-
-    # Flatten tta dimension for processing
-    boxes_flat = boxes.view(batch_size, tta_size * num_boxes, 4)
-    scores_flat = scores.view(batch_size, tta_size * num_boxes)
+    batch_size, num_boxes_total, _ = boxes.shape
 
     results = []
     for b in range(batch_size):
-        valid_mask = scores_flat[b] > 0
+        valid_mask = scores[b] > 0
         if not valid_mask.any():
             results.append((torch.empty(0, 4), torch.empty(0)))
             continue
 
-        valid_boxes = boxes_flat[b][valid_mask]
-        valid_scores = scores_flat[b][valid_mask]
+        valid_boxes = boxes[b][valid_mask]
+        valid_scores = scores[b][valid_mask]
 
         keep = torch_nms(valid_boxes, valid_scores, iou_threshold)
         results.append((valid_boxes[keep], valid_scores[keep]))
@@ -27,21 +23,17 @@ def nms(boxes, scores, iou_threshold=0.5):
 
 
 def soft_nms(boxes, scores, iou_threshold=0.5, sigma=0.5, score_threshold=0.001):
-    batch_size, tta_size, num_boxes, _ = boxes.shape
-
-    # Flatten tta dimension for processing
-    boxes_flat = boxes.view(batch_size, tta_size * num_boxes, 4)
-    scores_flat = scores.view(batch_size, tta_size * num_boxes)
+    batch_size, num_boxes_total, _ = boxes.shape
 
     results = []
     for b in range(batch_size):
-        valid_mask = scores_flat[b] > score_threshold
+        valid_mask = scores[b] > score_threshold
         if not valid_mask.any():
             results.append((torch.empty(0, 4), torch.empty(0)))
             continue
 
-        valid_boxes = boxes_flat[b][valid_mask].clone()
-        valid_scores = scores_flat[b][valid_mask].clone()
+        valid_boxes = boxes[b][valid_mask].clone()
+        valid_scores = scores[b][valid_mask].clone()
 
         # IoU matrix computation
         x1 = valid_boxes[:, 0].unsqueeze(1)
@@ -76,32 +68,18 @@ def soft_nms(boxes, scores, iou_threshold=0.5, sigma=0.5, score_threshold=0.001)
     return results
 
 
-def wbf(boxes, scores, weights=None, iou_threshold=0.5):
-    batch_size, tta_size, num_boxes, _ = boxes.shape
-
-    if weights is None:
-        weights = torch.ones(tta_size) / tta_size
-    else:
-        weights = torch.tensor(weights)
+def wbf(boxes, scores, iou_threshold=0.5):
+    batch_size, num_boxes_total, _ = boxes.shape
 
     results = []
     for b in range(batch_size):
-        all_boxes = []
-        all_scores = []
-
-        # Collect boxes from all TTA/models
-        for t in range(tta_size):
-            valid_mask = scores[b, t] > 0
-            if valid_mask.any():
-                all_boxes.append(boxes[b, t][valid_mask])
-                all_scores.append(scores[b, t][valid_mask] * weights[t])
-
-        if not all_boxes:
+        valid_mask = scores[b] > 0
+        if not valid_mask.any():
             results.append((torch.empty(0, 4), torch.empty(0)))
             continue
 
-        all_boxes = torch.cat(all_boxes, dim=0)
-        all_scores = torch.cat(all_scores, dim=0)
+        all_boxes = boxes[b][valid_mask]
+        all_scores = scores[b][valid_mask]
 
         # Group overlapping boxes
         fused_boxes = []
