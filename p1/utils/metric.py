@@ -2,6 +2,8 @@ import torch
 from torch import Tensor
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
+from p1.utils.helper import preprocess_json
+
 
 def box_iou(box1, box2):
     """Compute IoU between box1 and box2"""
@@ -85,8 +87,10 @@ class MetricEvaluator:
     Use process_json from helper if needed.
     """
 
-    def __init__(self):
+    def __init__(self, preprocess_preds=False, preprocess_targets=False):
         self.metric = MeanAveragePrecision(box_format="xywh")
+        self.preprocess_preds = preprocess_preds
+        self.preprocess_targets = preprocess_targets
 
     def process_preds(self, pred: list[tuple[Tensor, Tensor]], type="xyxy"):
         """
@@ -114,6 +118,10 @@ class MetricEvaluator:
         return out
 
     def update(self, preds, targets):
+        if self.preprocess_preds:
+            preds = self.process_preds(preds)
+        if self.preprocess_targets:
+            targets = preprocess_json(targets)
         self.metric.update(preds, targets)
 
     def compute(self):

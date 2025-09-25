@@ -11,7 +11,7 @@ from datasets import Dataset, Image
 from PIL import Image
 from p1.utils.metric import calculate_iou_matrix
 from p1.utils.wrappers import ModelWrapper
-from p1.utils.augmentation import tta, reverse_tta
+from p1.utils.augmentation import tta, reverse_tta, reverse_tta_new
 
 
 class RTWrapper(ModelWrapper):
@@ -90,7 +90,7 @@ class RTWrapper(ModelWrapper):
         print(scores)
         final_bboxes, final_scores = [], []
         for i in range(len(bboxes)):
-            temp_b, temp_s = reverse_tta(bboxes[i], scores[i], i)
+            temp_b, temp_s = reverse_tta_new(bboxes[i], scores[i], i)
             final_bboxes.append(temp_b)
             final_scores.append(temp_s)
         final_scores = torch.cat(final_scores, dim=1).squeeze(dim=2)
@@ -108,10 +108,12 @@ class RTWrapper(ModelWrapper):
         print(final)
         return final
 
-    def result_process(self, r):
+    def result_process(self, r: list[list[dict[str, torch.Tensor]]]):
         """
-        arg: list ( list ('boxes': tensor(_,4) ,'score': tensor(_,1)))
-        return: list-tta ( tensor ( batch ,num , 4)) , list-tta(tensor(batch,num,1))
+        Args:
+            r(list[list[dict[str, torch.Tensor]]]): tta-list
+        Returns:
+            list-tta ( tensor ( batch ,num , 4)) , list-tta(tensor(batch,num,1))
         """
         ##flatten
         flat_b = []
