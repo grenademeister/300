@@ -39,8 +39,36 @@ def tta(images: list[str]) -> list[Tensor]:
     ]
 
 
+def reverse_tta_new(
+    boxes: list[Tensor], scores: list[Tensor], tta_idx: int
+) -> list[tuple[Tensor, Tensor]]:
+    """
+    Correct boxes position after TTA. This version processes a list of boxes and scores, in case num_boxes varies by batch.
+    Args:
+        boxes (list[torch.Tensor]): List of detected boxes tensors, each of shape (num_boxes, 4)
+        scores (list[torch.Tensor]): List of confidence scores tensors, each of shape (num_boxes,)
+    """
+    h, w = 512, 512
+    corrected = []
+    for b, s in zip(boxes, scores):
+        boxes_corrected = b.clone()
+        if tta_idx == 1:
+            # H flip: x coordinates need correction
+            boxes_corrected[:, [0, 2]] = w - b[:, [2, 0]]
+        elif tta_idx == 2:
+            # V flip: y coordinates need correction
+            boxes_corrected[:, [1, 3]] = h - b[:, [3, 1]]
+        elif tta_idx == 3:
+            # HV flip: both x and y coordinates need correction
+            boxes_corrected[:, [0, 2]] = w - b[:, [2, 0]]
+            boxes_corrected[:, [1, 3]] = h - b[:, [3, 1]]
+        corrected.append((boxes_corrected, s))
+    return corrected
+
+
 def reverse_tta(boxes: Tensor, scores: Tensor, tta_idx: int) -> tuple[Tensor, Tensor]:
     """
+    DEPRECATED! THIS FUNCTION IS NOT USED ANYMORE.
     Correct boxes position after TTA
     Args:
         boxes(torch.Tensor): Detected boxes, shape (batch, num_boxes, 4)
