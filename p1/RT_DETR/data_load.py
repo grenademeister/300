@@ -38,7 +38,7 @@ def loading_data(label_path  , jpg_path):
             label = region['region_attributes']['chi_id']
             bbox = (attrs['x'], attrs['y'], attrs['width'], attrs['height'])
             bboxes.append(bbox)
-            print(bbox)
+            # print(bbox)
             labels.append(0)
         combined_data["bboxes"].append(bboxes)
         combined_data['category'].append(labels)
@@ -112,7 +112,7 @@ class RTDataset(Dataset):
      
         # Convert image to RGB numpy array
         image = np.array(image)
-     
+      
         formatted_annotations = []
         # Apply augmentations
         if self.transform:
@@ -121,6 +121,7 @@ class RTDataset(Dataset):
                 image = transformed["image"]
                 boxes = transformed["bboxes"]
                 categories = transformed["category"]
+              
                 formatted_annotations = self.format_image_annotations_as_coco(image_id, categories, boxes)
             else:
                 for obj_index in range(len(image)):
@@ -128,6 +129,7 @@ class RTDataset(Dataset):
                     image[obj_index] = transformed["image"]
                     boxes[obj_index] = transformed["bboxes"]
                     categories[obj_index] = transformed["category"]
+                
                     formatted_annotations.append(self.format_image_annotations_as_coco(image_id[obj_index], categories[obj_index], boxes[obj_index]))
         else:
             if type(idx) == type(1):
@@ -144,7 +146,7 @@ class RTDataset(Dataset):
             images=image, annotations=formatted_annotations, return_tensors="pt"
         )
       
-      
+       
         
         # Image processor expands batch dimension, lets squeeze it
         # result = {k: v[0] for k, v in result.items()}
@@ -159,3 +161,26 @@ def collate_fn(batch):
     data["labels"] = [x["labels"] for x in batch]
     
     return data
+
+if __name__ == '__main__':
+    from utils import load_models
+    checkpoint = "/home/parkjunsu/workspace/300/checkpoint-9744"
+    tmp = load_models(checkpoint)
+    image_processor = tmp['image_processor']
+    train_transform = tmp['train_transformer']
+    validation_transform = tmp['validation_transformer']
+    model = tmp['model']
+    evaluator = tmp['MAPEvaluator']
+   
+    paths = {
+        'train_json':"/home/parkjunsu/workspace/data/TL_KS_BBOX",
+        'train_jpg':"/home/parkjunsu/workspace/300/data/TS_KS",
+        'validation_json':'/home/parkjunsu/workspace/300/data/val_label',
+        'validation_jpg':'/home/parkjunsu/workspace/300/data/val_image'
+    }
+   
+    validation_data = loading_data(paths['validation_json'],paths['validation_jpg'])
+  
+    validation_RTdataset = RTDataset(validation_data, image_processor, transform=validation_transform)
+  
+    print('rt:',validation_RTdataset[0])

@@ -4,6 +4,18 @@ from torch import Tensor
 from torchvision import transforms
 
 
+def get_image_size(image: str) -> tuple[int, int]:
+    """
+    Get image size
+    Args:
+        image (str): Image file path
+    Returns:
+        tuple[int, int]: Image size (height, width)
+    """
+    img = Image.open(image).convert("RGB")
+    return img.size[1], img.size[0]  # (height, width)
+
+
 def tta(images: list[str]) -> list[Tensor]:
     """
     Apply test time augmentation
