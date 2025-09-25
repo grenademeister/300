@@ -1,4 +1,4 @@
-from data_load import RTDataset, collate_fn
+from .data_load import RTDataset, collate_fn
 from pathlib import Path
 import numpy as np
 import torch
@@ -8,107 +8,18 @@ import albumentations as A
 import os
 import json
 from datasets import Dataset, Image
-
-
-class ModelWrapper:
-    def __init__(self, method="nms", tta=None):
-        self.model = self.load_model()
-        assert method in ["nms", "soft-nms", "wbf"], "Invalid method"
-        if method == "nms":
-            self.ensemble_method = "nms"
-        elif method == "soft-nms":
-            self.ensemble_method = "soft_nms"
-        else:
-            self.ensemble_method = "wbf"
-        self.tta = tta
-
-    def preprocess(self, images, labels):
-        # Implement any preprocessing steps if necessary
-        return images, labels
-
-    def load_model(self):
-        raise NotImplementedError
-
-    def predict(self, images):
-        # final predicted outputs
-        raise NotImplementedError
-
-    def inference(self, images):
-        # predicted outputs BEFORE NMS
-        raise NotImplementedError
-
-    def validate(self):
-        raise NotImplementedError
-
-    def calculate_iou_matrix(self, bboxes1: torch.Tensor, bboxes2: torch.Tensor):
-        """
-        두 개의 바운딩 박스 배치 텐서 간의 IoU 행렬을 계산하고,
-        각 정답(bboxes2) 박스에 대한 최대 IoU 값을 찾아 리스트로 반환합니다.
-
-        Args:
-            bboxes1 (torch.Tensor): 예측 바운딩 박스 텐서.
-                                    형태: (B, N, 4), [x, y, w, h]
-            bboxes2 (torch.Tensor): 정답 바운딩 박스 텐서.
-                                    형태: (B, M, 4), [x, y, w, h]
-
-        Returns:
-            list: 길이가 B인 리스트.
-                각 원소는 (M,) 형태의 텐서이며, 해당 배치의 각 정답 박스에 대한
-                최대 IoU 값을 담고 있습니다.
-        """
-        # 입력 텐서의 데이터 타입을 float으로 통일
-        bboxes1 = bboxes1.float()
-        bboxes2 = bboxes2.float()
-
-        # [x, y, w, h] -> [x1, y1, x2, y2] 형태로 변환
-        boxes1 = torch.cat(
-            [bboxes1[..., :2], bboxes1[..., :2] + bboxes1[..., 2:]], dim=-1
-        )
-        boxes2 = torch.cat(
-            [bboxes2[..., :2], bboxes2[..., :2] + bboxes2[..., 2:]], dim=-1
-        )
-
-        # 각 박스의 면적 계산
-        area1 = (boxes1[..., 2] - boxes1[..., 0]) * (boxes1[..., 3] - boxes1[..., 1])
-        area2 = (boxes2[..., 2] - boxes2[..., 0]) * (boxes2[..., 3] - boxes2[..., 1])
-
-        # 교차 영역(intersection) 계산
-        inter_x1 = torch.maximum(
-            boxes1[..., 0].unsqueeze(2), boxes2[..., 0].unsqueeze(1)
-        )
-        inter_y1 = torch.maximum(
-            boxes1[..., 1].unsqueeze(2), boxes2[..., 1].unsqueeze(1)
-        )
-        inter_x2 = torch.minimum(
-            boxes1[..., 2].unsqueeze(2), boxes2[..., 2].unsqueeze(1)
-        )
-        inter_y2 = torch.minimum(
-            boxes1[..., 3].unsqueeze(2), boxes2[..., 3].unsqueeze(1)
-        )
-
-        inter_w = torch.clamp(inter_x2 - inter_x1, min=0)
-        inter_h = torch.clamp(inter_y2 - inter_y1, min=0)
-
-        intersection_area = inter_w * inter_h
-
-        # 합집합(union) 영역 계산
-        union_area = area1.unsqueeze(2) + area2.unsqueeze(1) - intersection_area
-
-        # IoU 행렬 계산. shape: (B, N, M)
-        iou = intersection_area / (union_area + 1e-8)
-
-        best_ious, _ = torch.max(iou, dim=1)
-        result_list = [v for v in best_ious]
-
-        return result_list
+from PIL import Image
+from p1.utils.metric import calculate_iou_matrix
+from p1.utils.wrappers import ModelWrapper
+from p1.utils.augmentation import tta, reverse_tta
 
 
 class RTWrapper(ModelWrapper):
     def __init__(
         self,
-        method="nms",
+        method="wbf",
         use_tta=True,
-        checkpoint="/workspace/RT_50/checkpoint-9744",
+        checkpoint="/home/parkjunsu/workspace/300/checkpoint-9744",
         device="cuda",
     ):
         self.checkpoint = checkpoint
@@ -126,6 +37,7 @@ class RTWrapper(ModelWrapper):
             ),
         )
         super().__init__(method, use_tta)
+        self.model = self.load_model()
 
     def preprocess(self):
         val_data = self.loading_data()
@@ -135,21 +47,111 @@ class RTWrapper(ModelWrapper):
     def load_model(self):
         return AutoModelForObjectDetection.from_pretrained(self.checkpoint)
 
-    def inference(self, image) -> dict:
+    def inference(self, images) -> dict:
         """
-        arg: jpg image
-        return: {'score' : tensor([ ~]) , 'boxes' : tensor([~])}
+        arg: list(path)
+        return: [ (bboxes, score) ,() ~]
         """
-        inputs = self.image_processor(image, return_tensors="pt")
+        inputs = []
+        self.use_tta = True
+        if self.use_tta:
+            inputs = tta(images=images)
+            #  print('after tta shpae' , len(inputs) , inputs[0].shape) ## 4 size [batch,3,512,512]
+            for i in range(len(inputs)):
+                inputs[i] = self.image_processor(
+                    inputs[i], return_tensors="pt", do_rescale=False
+                )["pixel_values"]
+        else:
+            for image in images:
+                inputs.append(Image.open(image))
 
-        with torch.no_grad():
-            output = self.model(**inputs)
-        target_sizes = torch.tensor([image.size[::-1]])
+            r_inputs = []
+            r_inputs.append(
+                self.image_processor(inputs, return_tensors="pt")["pixel_values"]
+            )
+            inputs = r_inputs
+        target_size = torch.tensor([512, 512]).unsqueeze(0).expand(len(images), -1)
+        outputs = []
+        for input in inputs:
+            with torch.no_grad():
+                outputs.append(
+                    self.model(input)
+                )  # model output: xmin ymin xmax ymax / tta-list ( batch-list ( ~))
 
-        result = self.image_processor.post_process_object_detection(
-            output, threshold=0.25, target_sizes=target_sizes
-        )
-        return result
+        results = []
+        for output in outputs:
+            results.append(
+                self.image_processor.post_process_object_detection(
+                    output, threshold=0.25, target_sizes=target_size
+                )
+            )
+
+        bboxes, scores = self.result_process(results)  # [ (batch,num_bbox,4)] format
+        print(scores)
+        final_bboxes, final_scores = [], []
+        for i in range(len(bboxes)):
+            temp_b, temp_s = reverse_tta(bboxes[i], scores[i], i)
+            final_bboxes.append(temp_b)
+            final_scores.append(temp_s)
+        final_scores = torch.cat(final_scores, dim=1).squeeze(dim=2)
+        final_bboxes = torch.cat(final_bboxes, dim=1)
+        print("final bbox shape:", final_bboxes.shape)
+        print("final score shape:", final_scores.shape)
+        return final_bboxes, final_scores
+
+    def predict(self, images):
+        bboxes, scores = self.inference(images)
+        print("before ensemble")
+        print(bboxes)
+        final = self.ensemble_method(bboxes, scores)
+        print("after ensemble:")
+        print(final)
+        return final
+
+    def result_process(self, r):
+        """
+        arg: list ( list ('boxes': tensor(_,4) ,'score': tensor(_,1)))
+        return: list-tta ( tensor ( batch ,num , 4)) , list-tta(tensor(batch,num,1))
+        """
+        ##flatten
+        flat_b = []
+        flat_s = []
+        tta_num = len(r)
+        batch_num = len(r[0])
+        max_bbox_num = 0
+
+        for tta in r:
+            for batch in tta:
+                b = batch["boxes"]
+                flat_b.append(b)
+                flat_s.append(batch["scores"])
+                if batch["boxes"].shape[0] > max_bbox_num:
+                    max_bbox_num = b.shape[0]
+
+        ## padding
+        padded_b = [
+            (
+                torch.cat([t, torch.full((max_bbox_num - t.shape[0], 4), -1.0)])
+                if t.shape[0] < max_bbox_num
+                else t
+            )
+            for t in flat_b
+        ]
+        padded_s = [
+            (
+                torch.cat([t, torch.full((max_bbox_num - t.shape[0], 4), -1.0)])
+                if t.shape[0] < max_bbox_num
+                else t
+            )
+            for t in flat_s
+        ]
+
+        # reshape
+        results_b = torch.stack(padded_b).view(tta_num, batch_num, max_bbox_num, 4)
+        results_b = [b for b in results_b]
+        results_s = torch.stack(padded_s).view(tta_num, batch_num, max_bbox_num, 1)
+        results_s = [s for s in results_s]
+        return results_b, results_s
 
     def validate(self):
         n = 2
@@ -167,22 +169,18 @@ class RTWrapper(ModelWrapper):
                 target_size = torch.tensor([512, 512]).unsqueeze(0).expand(n, -1)
                 output = self.image_processor.post_process_object_detection(
                     output, threshold=0.25
-                )
-                print(output[0])
-                output, label = self.post_process(output, label)
+                )  ##output format : (xmin,ymin,xmax,ymax) , label format :(xcenter ycenter w h)
 
-                print(output)
-                print("--")
-                print(label)
-                i = self.calculate_iou_matrix(output, label)
+                output, label = self.post_process(output, label)
+                i = calculate_iou_matrix(output, label)
 
                 # if i.ndim == 0:
                 #     miou.append(i)
                 # else:
                 miou.extend(i)
 
-                print("miou:", i)
-        print("miou50:", np.mean(miou))
+                print("miou50:", np.mean(sum(miou) / len(miou)))
+        print("miou50:", np.mean(sum(miou) / len(miou)))
         return np.mean(miou)
 
     def post_process(self, output, label):
@@ -196,11 +194,17 @@ class RTWrapper(ModelWrapper):
                 output_results.append(output[i]["boxes"])
                 label_results.append(label[i]["boxes"])
         output_result = torch.cat(output_results, dim=0)
+        label_results = torch.cat(label_results, dim=0)
+        ## formating to coco (xmin ymin w h)
+
         output_result[:, 2] = output_result[:, 2] - output_result[:, 0]
         output_result[:, 3] = output_result[:, 3] - output_result[:, 1]
-        return output_result.unsqueeze(0), torch.cat(label_results, dim=0).unsqueeze(0)
+        label_results[:, 0] = label_results[:, 0] - label_results[:, 2] / 2
+        label_results[:, 1] = label_results[:, 1] - label_results[:, 3] / 2
 
-    def loading_data(self, data_dir="/workspace/data"):
+        return output_result.unsqueeze(0), label_results.unsqueeze(0)
+
+    def loading_data(self, data_dir="/home/parkjunsu/workspace/300/data"):
         # image_path = Path(data_dir / 'val_image')
         label_path = Path(data_dir) / "VL_KS_BBOX"
         json_paths = [f for f in label_path.rglob("*.json")]
@@ -250,7 +254,12 @@ class RTWrapper(ModelWrapper):
 
 
 if __name__ == "__main__":
+
     RT = RTWrapper()
     # dataset = RT.preprocess()
     # print(dataset[(0,1)])
-    RT.validate()
+    a = Path("/home/parkjunsu/workspace/300/data/VS_KS")
+    results = RT.predict(
+        [a / "K3_CHN_20130308050237_30.jpg", a / "K3_CHN_20130308050353_17.jpg"]
+    )
+    # RT.validate()
