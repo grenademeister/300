@@ -41,7 +41,7 @@ def tta(images: list[str]) -> list[Tensor]:
 
 def reverse_tta_new(
     boxes: list[Tensor], scores: list[Tensor], tta_idx: int
-) -> list[tuple[Tensor, Tensor]]:
+) -> tuple[list[Tensor], list[Tensor]]:
     """
     Correct boxes position after TTA. This version processes a list of boxes and scores, in case num_boxes varies by batch.
     Args:
@@ -62,8 +62,8 @@ def reverse_tta_new(
             # HV flip: both x and y coordinates need correction
             boxes_corrected[:, [0, 2]] = w - b[:, [2, 0]]
             boxes_corrected[:, [1, 3]] = h - b[:, [3, 1]]
-        corrected.append((boxes_corrected, s))
-    return corrected
+        corrected.append(boxes_corrected)
+    return corrected, scores
 
 
 def reverse_tta(boxes: Tensor, scores: Tensor, tta_idx: int) -> tuple[Tensor, Tensor]:

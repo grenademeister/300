@@ -4,7 +4,9 @@ from p1.utils.metric import box_iou
 
 
 def nms(boxes, scores, iou_threshold=0.5):
-    batch_size, num_boxes_total, _ = boxes.shape
+    # boxes: list of (num_boxes, 4) tensors, length=batch_size
+    # scores: list of (num_boxes,) tensors, length=batch_size
+    batch_size = len(boxes)
 
     results = []
     for b in range(batch_size):
@@ -23,7 +25,9 @@ def nms(boxes, scores, iou_threshold=0.5):
 
 
 def soft_nms(boxes, scores, iou_threshold=0.5, sigma=0.5, score_threshold=0.001):
-    batch_size, num_boxes_total, _ = boxes.shape
+    # boxes: list of (num_boxes, 4) tensors, length=batch_size
+    # scores: list of (num_boxes,) tensors, length=batch_size
+    batch_size = len(boxes)
 
     results = []
     for b in range(batch_size):
@@ -69,7 +73,9 @@ def soft_nms(boxes, scores, iou_threshold=0.5, sigma=0.5, score_threshold=0.001)
 
 
 def wbf(boxes, scores, iou_threshold=0.5):
-    batch_size, num_boxes_total, _ = boxes.shape
+    # boxes: list of (num_boxes, 4) tensors, length=batch_size
+    # scores: list of (num_boxes,) tensors, length=batch_size
+    batch_size = len(boxes)
 
     results = []
     for b in range(batch_size):
