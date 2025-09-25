@@ -86,7 +86,7 @@ class MetricEvaluator:
     """
 
     def __init__(self):
-        self.metric = MeanAveragePrecision(box_format="xywh", iou_thresholds=[0.5])
+        self.metric = MeanAveragePrecision(box_format="xywh")
 
     def process_preds(self, pred: list[tuple[Tensor, Tensor]], type="xyxy"):
         """
