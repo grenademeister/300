@@ -18,7 +18,9 @@ def box_iou(box1, box2):
     inter = w * h
 
     return inter / (area1.unsqueeze(1) + area2.unsqueeze(0) - inter)
-def calculate_iou_matrix(self,bboxes1: torch.Tensor, bboxes2: torch.Tensor):
+
+
+def calculate_iou_matrix(self, bboxes1: torch.Tensor, bboxes2: torch.Tensor):
     """
     두 개의 바운딩 박스 배치 텐서 간의 IoU 행렬을 계산하고,
     각 정답(bboxes2) 박스에 대한 최대 IoU 값을 찾아 리스트로 반환합니다.
@@ -30,7 +32,7 @@ def calculate_iou_matrix(self,bboxes1: torch.Tensor, bboxes2: torch.Tensor):
                                 형태: (B, M, 4), [x, y, w, h]
 
     Returns:
-        list: 길이가 B인 리스트. 
+        list: 길이가 B인 리스트.
             각 원소는 (M,) 형태의 텐서이며, 해당 배치의 각 정답 박스에 대한
             최대 IoU 값을 담고 있습니다.
     """
@@ -41,7 +43,7 @@ def calculate_iou_matrix(self,bboxes1: torch.Tensor, bboxes2: torch.Tensor):
     # [x, y, w, h] -> [x1, y1, x2, y2] 형태로 변환
     boxes1 = torch.cat([bboxes1[..., :2], bboxes1[..., :2] + bboxes1[..., 2:]], dim=-1)
     boxes2 = torch.cat([bboxes2[..., :2], bboxes2[..., :2] + bboxes2[..., 2:]], dim=-1)
-    
+
     # 각 박스의 면적 계산
     area1 = (boxes1[..., 2] - boxes1[..., 0]) * (boxes1[..., 3] - boxes1[..., 1])
     area2 = (boxes2[..., 2] - boxes2[..., 0]) * (boxes2[..., 3] - boxes2[..., 1])
@@ -51,7 +53,7 @@ def calculate_iou_matrix(self,bboxes1: torch.Tensor, bboxes2: torch.Tensor):
     inter_y1 = torch.maximum(boxes1[..., 1].unsqueeze(2), boxes2[..., 1].unsqueeze(1))
     inter_x2 = torch.minimum(boxes1[..., 2].unsqueeze(2), boxes2[..., 2].unsqueeze(1))
     inter_y2 = torch.minimum(boxes1[..., 3].unsqueeze(2), boxes2[..., 3].unsqueeze(1))
-    
+
     inter_w = torch.clamp(inter_x2 - inter_x1, min=0)
     inter_h = torch.clamp(inter_y2 - inter_y1, min=0)
 
@@ -69,13 +71,20 @@ def calculate_iou_matrix(self,bboxes1: torch.Tensor, bboxes2: torch.Tensor):
     # dim=1은 예측(N) 차원을 의미합니다.
     # best_ious의 shape은 (B, M)이 됩니다.
     best_ious, _ = torch.max(iou, dim=1)
-    
+
     # 2. 결과를 배치별로 분리하여 리스트로 만듭니다.
     result_list = [v for v in best_ious]
-    result_list = [1 if v > 0.5 else 0 for v in result_list ]
+    result_list = [1 if v > 0.5 else 0 for v in result_list]
     return result_list
 
+
 class MetricEvaluator:
+    """
+    Wrapper class for MAP from torchmetrics.\n
+    Use process_preds to convert predictions to required format, then use update() and compute().\n
+    Use process_json from helper if needed.
+    """
+
     def __init__(self):
         self.metric = MeanAveragePrecision(box_format="xywh", iou_thresholds=[0.5])
 
@@ -101,7 +110,7 @@ class MetricEvaluator:
                     "labels": torch.zeros(len(boxes), dtype=torch.int64),
                 }
             )
-        print(out)
+        # print(out)
         return out
 
     def update(self, preds, targets):
@@ -124,13 +133,13 @@ if __name__ == "__main__":
     # Sample predictions (boxes in xyxy format, scores)
     preds = [
         (torch.tensor([[10, 10, 20, 20]]), torch.tensor([0.9])),
-        (torch.tensor([[30, 30, 40, 40]]), torch.tensor([0.2])),
+        (torch.tensor([[30, 30, 40, 40]]), torch.tensor([0.8])),
     ]
 
     # Sample targets
     targets = [
         {"boxes": torch.tensor([[10, 10, 13, 13]]), "labels": torch.tensor([0])},
-        {"boxes": torch.tensor([[30, 30, 10, 10]]), "labels": torch.tensor([0])},
+        {"boxes": torch.tensor([[30, 30, 40, 40]]), "labels": torch.tensor([0])},
     ]
     # Process predictions and update metric
     processed_preds = evaluator.process_preds(preds, type="xyxy")

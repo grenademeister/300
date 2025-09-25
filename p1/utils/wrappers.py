@@ -5,7 +5,7 @@ from supervision import Detections
 from ultralytics import YOLO
 
 from p1.utils.ensemble_boxes import nms, soft_nms, wbf
-from p1.utils.augmentation import tta, reverse_tta
+from p1.utils.augmentation import tta, reverse_tta, reverse_tta_new
 
 
 class ModelWrapper:
@@ -75,7 +75,7 @@ class YOLOWrapper(ModelWrapper):
         results = []
         scores = []
         for i, image_batch in enumerate(images_input):
-            results_batch = self.model.predict(image_batch)
+            results_batch = self.model.predict(image_batch, verbose=False)
             temp_res, temp_scores = [], []
             for res in results_batch:
                 temp_res.append(res.boxes.xyxy)
@@ -90,8 +90,8 @@ class YOLOWrapper(ModelWrapper):
         scores = torch.cat(scores, dim=1)
         # results: (batch, num_boxes, 4)
         # scores: (batch, num_boxes)
-        print("YOLO results shape:", results.shape)
-        print("YOLO scores shape:", scores.shape)
+        # print("YOLO results shape:", results.shape)
+        # print("YOLO scores shape:", scores.shape)
         return results, scores
 
     def predict(self, images):

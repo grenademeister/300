@@ -106,7 +106,7 @@ def wbf(boxes, scores, iou_threshold=0.5):
                 # Weighted average of coordinates
                 weights_norm = overlap_scores / overlap_scores.sum()
                 fused_box = (overlap_boxes * weights_norm.unsqueeze(1)).sum(0)
-                fused_score = overlap_scores.sum()  ## mean()아니노?
+                fused_score = overlap_scores.mean()  ## mean()아니노? 맞음 ㅎ
 
                 fused_boxes.append(fused_box)
                 fused_scores.append(fused_score)
