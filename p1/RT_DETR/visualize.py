@@ -1,8 +1,10 @@
 import numpy as np
 from PIL import ImageDraw, Image
+
 # Draw sample
 
-def Draw_img_bbox(image,result):
+
+def Draw_img_bbox(image, result):
 
     for score, label, box in zip(result["scores"], result["labels"], result["boxes"]):
         box = [round(i, 2) for i in box.tolist()]
@@ -19,8 +21,9 @@ def Draw_img_bbox(image,result):
 
     return image_with_boxes
 
+
 def Draw_histogram(path):
-    fig, ax = plt.subplots(1,2,figsize=(20,10))
+    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
 
     try:
         # 1. Pillow로 이미지 열기
@@ -37,15 +40,19 @@ def Draw_histogram(path):
 
         # 원본 이미지 시각화 (NumPy 배열을 직접 사용)
         ax[0].imshow(img_array)
-        ax[0].set_title('Sample Image (RGB)')
-        ax[0].axis('off')
+        ax[0].set_title("Sample Image (RGB)")
+        ax[0].axis("off")
 
         # 각 채널의 히스토그램 시각화
-        ax[1].hist(red.flatten(), bins=256, color='red', alpha=0.5, label='Red Channel')
-        ax[1].hist(green.flatten(), bins=256, color='green', alpha=0.5, label='Green Channel')
-        ax[1].hist(blue.flatten(), bins=256, color='blue', alpha=0.5, label='Blue Channel')
-        ax[1].set_title('Pixel Intensity Histogram')
-        ax[1].legend() # 각 히스토그램의 라벨을 표시
+        ax[1].hist(red.flatten(), bins=256, color="red", alpha=0.5, label="Red Channel")
+        ax[1].hist(
+            green.flatten(), bins=256, color="green", alpha=0.5, label="Green Channel"
+        )
+        ax[1].hist(
+            blue.flatten(), bins=256, color="blue", alpha=0.5, label="Blue Channel"
+        )
+        ax[1].set_title("Pixel Intensity Histogram")
+        ax[1].legend()  # 각 히스토그램의 라벨을 표시
 
         plt.show()
 

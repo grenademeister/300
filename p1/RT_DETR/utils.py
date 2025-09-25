@@ -1,4 +1,5 @@
-from transformers import AutoImageProcessor, AutoModelForObjectDetection
+from transformers.models.auto.image_processing_auto import AutoImageProcessor
+from transformers.models.auto.modeling_auto import AutoModelForObjectDetection
 import albumentations as A
 import numpy as np
 from dataclasses import dataclass

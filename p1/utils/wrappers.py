@@ -22,7 +22,11 @@ class ModelWrapper:
             "soft-nms",
             "wbf",
         ], "Invalid ensemble method."
-        self.ensemble_method = {"nms": nms, "soft-nms": soft_nms, "wbf": wbf}[method]
+        from typing import Callable
+
+        self.ensemble_method: Callable = {"nms": nms, "soft-nms": soft_nms, "wbf": wbf}[
+            method
+        ]
         self.use_tta = use_tta
 
     def preprocess(
@@ -204,3 +208,4 @@ class EnsembleWrapper(ModelWrapper):
 
         final = self.ensemble_method(results, scores)
         return final
+        # final result shape: (batch, num_final_boxes, 4), (batch, num_final_boxes)

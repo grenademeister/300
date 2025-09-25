@@ -1,32 +1,37 @@
 import torch
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-print(f'Using device: {device}')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+print(f"Using device: {device}")
 from utils import load_models
+
 checkpoint = "PekingU/rtdetr_r50vd"
 tmp = load_models(checkpoint)
-image_processor = tmp['image_processor']
-train_transform = tmp['train_transformer']
-validation_transform = tmp['validation_transformer']
-model = tmp['model']
-evaluator = tmp['MAPEvaluator']
-from data_load import loading_data , RTDataset
-paths = {
-    'train_json':"/root/workspace/data/TL_KS_BBOX",
-    'train_jpg':"/root/workspace/data/TS_KS",
-    'validation_json':'/root/workspace/data/VL_KS_BBOX',
-    'validation_jpg':'/root/workspace/data/VS_KS'
-}
-train_data = loading_data(paths['train_json'],paths['train_jpg'])
+image_processor = tmp["image_processor"]
+train_transform = tmp["train_transformer"]
+validation_transform = tmp["validation_transformer"]
+model = tmp["model"]
+evaluator = tmp["MAPEvaluator"]
+from data_load import loading_data, RTDataset
 
-validation_data = loading_data(paths['validation_json'],paths['validation_jpg'])
+paths = {
+    "train_json": "/root/workspace/data/TL_KS_BBOX",
+    "train_jpg": "/root/workspace/data/TS_KS",
+    "validation_json": "/root/workspace/data/VL_KS_BBOX",
+    "validation_jpg": "/root/workspace/data/VS_KS",
+}
+train_data = loading_data(paths["train_json"], paths["train_jpg"])
+
+validation_data = loading_data(paths["validation_json"], paths["validation_jpg"])
 train_RTdataset = RTDataset(train_data, image_processor, transform=train_transform)
 
-validation_RTdataset = RTDataset(validation_data, image_processor, transform=validation_transform)
-from transformers import TrainingArguments , Trainer
+validation_RTdataset = RTDataset(
+    validation_data, image_processor, transform=validation_transform
+)
+from transformers.training_args import TrainingArguments
+from transformers.trainer import Trainer
 import torch
 from data_load import collate_fn
-
 
 
 out_dir = "/workspace/RT_50"
