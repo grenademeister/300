@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from transformers import AutoImageProcessor, AutoModel
-
+from ResNet.model import ResNetRegressor
 
 class ChimneyRegressor(nn.Module):
     def __init__(
@@ -85,6 +85,7 @@ class ChimneyRegressor(nn.Module):
 class ModelWrapper:
     def __init__(
         self,
+        model_type = 'dino',
         dinov3_name="facebook/dinov3-vitl16-pretrain-sat493m",
         device=None,
         fusion_type="baseline",
@@ -92,11 +93,14 @@ class ModelWrapper:
         self.device = device or torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
         )
-        self.model = ChimneyRegressor(dinov3_name, fusion_type=fusion_type).to(
-            self.device
-        )
+        if(model_type =='resnet'):
+            self.model = ResNetRegressor().to(self.device)
+        else:
+            self.model = ChimneyRegressor(dinov3_name, fusion_type=fusion_type).to(
+                self.device
+            )
         self.processor = self.model.processor
-
+    
     def train_mode(self):
         self.model.train()
         self.model.backbone.eval()
