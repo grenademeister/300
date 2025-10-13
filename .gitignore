@@ -4,9 +4,11 @@
 *.safetensors
 *.txt
 *.json
+*.jpg
 
 __pycache__/
 data/
+data_yolo/
 .github/
 env_300/
 checkpoint-9744/
