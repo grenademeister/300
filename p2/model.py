@@ -25,12 +25,25 @@ class ChimneyRegressor(nn.Module):
             self.head = nn.Sequential(
                 nn.Linear(hidden_dim + metadata_dim, 512),
                 nn.ReLU(),
-                nn.Dropout(0.3),
                 nn.Linear(512, 256),
                 nn.ReLU(),
-                nn.Dropout(0.3),
                 nn.Linear(256, 1),
             )
+
+        if fusion_type == "baseline_crop":
+            self.head = nn.Sequential(
+                nn.Linear(hidden_dim * 2 + metadata_dim, 512),
+                nn.BatchNorm1d(512),
+                nn.ReLU(),
+                nn.Linear(512, 256),
+                nn.BatchNorm1d(256),
+                nn.ReLU(),
+                nn.Linear(256, 64),
+                nn.BatchNorm1d(64),
+                nn.ReLU(),
+                nn.Linear(64, 1),
+            )
+
         elif fusion_type == "cross_attn":
             self.metadata_proj = nn.Linear(metadata_dim, hidden_dim)
             self.cross_attn = nn.MultiheadAttention(hidden_dim, 8, batch_first=True)
@@ -38,10 +51,8 @@ class ChimneyRegressor(nn.Module):
             self.head = nn.Sequential(
                 nn.Linear(hidden_dim, 512),
                 nn.ReLU(),
-                nn.Dropout(0.3),
                 nn.Linear(512, 256),
                 nn.ReLU(),
-                nn.Dropout(0.3),
                 nn.Linear(256, 1),
             )
         elif fusion_type == "film":
@@ -50,10 +61,8 @@ class ChimneyRegressor(nn.Module):
             self.head = nn.Sequential(
                 nn.Linear(hidden_dim, 512),
                 nn.ReLU(),
-                nn.Dropout(0.3),
                 nn.Linear(512, 256),
                 nn.ReLU(),
-                nn.Dropout(0.3),
                 nn.Linear(256, 1),
             )
 
@@ -64,6 +73,15 @@ class ChimneyRegressor(nn.Module):
         if self.fusion_type == "baseline":
             cls_token = outputs.pooler_output
             combined = torch.cat([cls_token, metadata], dim=1)
+            return self.head(combined).squeeze(-1)
+
+        if self.fusion_type == "baseline_crop":
+            cls_token_whole = outputs.pooler_output
+            cls_token_crop = self.backbone(
+                pixel_values=self._crop_img(pixel_values, metadata)
+            ).pooler_output
+
+            combined = torch.cat([cls_token_whole, cls_token_crop, metadata], dim=1)
             return self.head(combined).squeeze(-1)
 
         elif self.fusion_type == "cross_attn":
@@ -80,6 +98,46 @@ class ChimneyRegressor(nn.Module):
             modulated = gamma * tokens + beta
             fused = modulated.mean(dim=1)
             return self.head(fused).squeeze(-1)
+
+    def _crop_img(self, imgs, metadata):
+        crops = []
+        for i in range(imgs.size(0)):
+            x1 = int(metadata[i, 2].item())
+            x2 = int(metadata[i, 3].item())
+            y1 = int(metadata[i, 4].item())
+            y2 = int(metadata[i, 5].item())
+            crop_x1, crop_y1, crop_x2, crop_y2 = self._get_enclosing_rect(
+                (x1, y1, x2, y2)
+            )
+            crop = imgs[i:, :, crop_y1:crop_y2, crop_x1:crop_x2]
+            crop = nn.functional.interpolate(
+                crop, size=(224, 224), mode="bilinear", align_corners=False
+            )
+            crops.append(crop)
+        return torch.cat(crops, dim=0)
+
+    def _get_enclosing_rect(self, point_pairs, w=60, imgsz=511):
+        """
+        get minimal enclosing square for given point pairs
+        Args:
+            point_pairs: (x1, y1, x2, y2)
+            w: padding width
+            imgsz: image size
+        Returns:
+            (xmin, ymin, xmax, ymax)
+        """
+        x1, y1, x2, y2 = point_pairs
+        x_center = (x1 + x2) // 2
+        y_center = (y1 + y2) // 2
+        side = max(abs(x2 - x1), abs(y2 - y1)) + w
+        half_side = side // 2
+        point_pairs = (
+            max(0, x_center - half_side),
+            max(0, y_center - half_side),
+            min(x_center + half_side, imgsz),
+            min(y_center + half_side, imgsz),
+        )
+        return point_pairs
 
 
 class ModelWrapper:
